@@ -22,7 +22,7 @@ select {
 
 ## Build
 
-Needs the [machin](https://github.com/javimosch/machin) compiler with comma-ok receive (v0.17.0+) on `PATH` and a C compiler.
+Needs the [machin](https://github.com/javimosch/machin) compiler with comma-ok receive + `flush()` (v0.18.0+) on `PATH` and a C compiler.
 
 ```bash
 ./build.sh                          # → ./machin-batch
@@ -36,16 +36,14 @@ printf 'a\nb\nc\nd\ne\n' | ./machin-batch -n 2
 #   ["a","b"]
 #   ["c","d"]
 #   ["e"]
-tail -f app.log | stdbuf -oL ./machin-batch -n 100 -t 5000
+tail -f app.log | ./machin-batch -n 100 -t 5000
 ```
 
-Flags: `-n SIZE` flush after SIZE lines (default 10) · `-t MILLIS` flush at most every MILLIS ms when lines are pending (default 1000). Each batch prints as a JSON array of lines.
-
-> Piping buffers stdout (libc), so for prompt batch emission through a pipe run it under `stdbuf -oL` (as above). Writing to a terminal is line-buffered already.
+Flags: `-n SIZE` flush after SIZE lines (default 10) · `-t MILLIS` flush at most every MILLIS ms when lines are pending (default 1000). Each batch prints as a JSON array of lines, and the tool calls `flush()` after each one so batches appear immediately downstream even through a pipe.
 
 ## How it works
 
-A `read_stdin` goroutine feeds lines into the `in` channel and closes it at EOF; a `ticker` goroutine sends on `tick` every `-t` ms. `main` selects over both, accumulating a `[]string` batch and flushing it (via `json(batch)`) on size, on tick, or on close. Concurrency, channels, `select`, `close`, comma-ok, and `json` are all plain machin.
+A `read_stdin` goroutine feeds lines into the `in` channel and closes it at EOF; a `ticker` goroutine sends on `tick` every `-t` ms. `main` selects over both, accumulating a `[]string` batch and flushing it (via `json(batch)`) on size, on tick, or on close. Concurrency, channels, `select`, `close`, comma-ok, `json`, and `flush` are all plain machin.
 
 ## Layout
 

@@ -74,6 +74,7 @@ func main() {
                 if ok == false {
                     if len(batch) > 0 {
                         println(json(batch))
+                        flush()
                         total = total + len(batch)
                     }
                     done = true
@@ -82,6 +83,7 @@ func main() {
                     batch = append(batch, line)
                     if len(batch) >= size {
                         println(json(batch))
+                        flush()
                         total = total + len(batch)
                         batch = []string{}
                     }
@@ -89,6 +91,7 @@ func main() {
             case <- tick:
                 if len(batch) > 0 {
                     println(json(batch))
+                    flush()
                     total = total + len(batch)
                     batch = []string{}
                 }
