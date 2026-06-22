@@ -1,0 +1,97 @@
+// machin-batch — group a line stream into chunks, written in machin (MFL).
+// Reads stdin lines and emits a batch (as a JSON array) whenever it reaches
+// -n lines OR -t milliseconds elapse with lines pending — whichever comes first
+// — and a final partial batch when the input ends. Useful for feeding bulk APIs
+// or rate-controlling a downstream stage.
+//
+// The collector waits on the input channel AND a ticker channel at once, and
+// must tell "a line arrived" from "the input closed" — which is exactly the
+// comma-ok receive this tool drove into machin:
+//   select { case line, ok := <-input: if !ok { flush; stop } ... case <-tick: ... }
+
+func read_stdin(ch) {
+    for {
+        line := input()
+        if len(line) == 0 { break }
+        ch <- line
+    }
+    close(ch)
+}
+
+func ticker(ch, ms) {
+    for {
+        sleep(ms)
+        ch <- 1
+    }
+}
+
+func usage() {
+    println("machin-batch - group a line stream into JSON-array chunks")
+    println("")
+    println("usage:")
+    println("  machin-batch [-n SIZE] [-t MILLIS]")
+    println("  tail -f log | machin-batch -n 100 -t 5000")
+    println("")
+    println("  -n SIZE    flush after SIZE lines (default 10)")
+    println("  -t MILLIS  flush at most every MILLIS ms if lines are pending (default 1000)")
+    println("each batch is printed as a JSON array of lines; a final partial batch flushes on EOF")
+}
+
+func main() {
+    a := args()
+    n := len(a)
+    size := 10
+    millis := 1000
+
+    i := 1
+    for i < n {
+        arg := a[i]
+        if arg == "-h" || arg == "--help" { usage() return }
+        if arg == "-n" {
+            if i + 1 < n { size = parse_int(a[i+1]) i = i + 2 continue }
+            println("machin-batch: -n needs a value") exit(2)
+        }
+        if arg == "-t" {
+            if i + 1 < n { millis = parse_int(a[i+1]) i = i + 2 continue }
+            println("machin-batch: -t needs a value") exit(2)
+        }
+        println("machin-batch: unknown arg " + arg) exit(2)
+    }
+    if size < 1 { size = 1 }
+    if millis < 1 { millis = 1 }
+
+    in := make(chan string)
+    tick := make(chan int)
+    go read_stdin(in)
+    go ticker(tick, millis)
+
+    batch := []string{}
+    total := 0
+    done := false
+    for done == false {
+        select {
+            case line, ok := <- in:
+                if ok == false {
+                    if len(batch) > 0 {
+                        println(json(batch))
+                        total = total + len(batch)
+                    }
+                    done = true
+                }
+                if ok {
+                    batch = append(batch, line)
+                    if len(batch) >= size {
+                        println(json(batch))
+                        total = total + len(batch)
+                        batch = []string{}
+                    }
+                }
+            case <- tick:
+                if len(batch) > 0 {
+                    println(json(batch))
+                    total = total + len(batch)
+                    batch = []string{}
+                }
+        }
+    }
+}
